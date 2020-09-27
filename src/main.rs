@@ -5,20 +5,10 @@ use std::ops::Add;
 use std::ops::Sub;
 use std::ops::Mul;
 
-struct Vector{
-    x: f32,
-    y: f32,
-    z: f32
-}
+
+struct Vector(f32, f32, f32);
 
 impl Vector{
-    fn new(x: f32, y: f32, z: f32) -> Self{
-        Vector{
-            x: x,
-            y: y,
-            z: z
-        }
-    }
     fn dot(&self, other: &Vector) -> f32{
         self.x * other.x + self.y * other.y + self.z * other.z
     }
@@ -140,6 +130,12 @@ impl Sphere{
 }
 
 fn main() {
+
+    let scene = [
+        Sphere::new(1e5, Vector::new(1e5+1, 40.8, 81.6), Vector::new(0, 0, 0), Vector::new(0.75, 0.75, 0.75), Refl_t::DIFF)),
+        Sphere::new(1e5, Vector::new(-1e5+99, 40.8, 81.6), Vector::new(0, 0, 0), Vector::new(0.25, 0.25, 0.25), Refl_t::DIFF)
+    ];
+
     let row = 256;
     let col = 256;
     let level = 255;
