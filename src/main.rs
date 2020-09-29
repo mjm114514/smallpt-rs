@@ -7,6 +7,7 @@ use std::ops::Mul;
 use std::f32::INFINITY;
 
 
+#[derive(Copy, Clone)]
 struct Vec3(f32, f32, f32);
 
 impl Vec3{
@@ -22,6 +23,13 @@ impl Vec3{
             self.2 * other.0 - self.0 * other.2,
             self.1 * other.2 - self.2 * other.1
         )
+    }
+    fn normalize(&mut self) -> &Vec3{
+        let len = self.length();
+        self.0 /= len;
+        self.1 /= len;
+        self.2 /= len;
+        self
     }
 }
 impl Add<&Vec3> for &Vec3{
@@ -103,44 +111,43 @@ impl Sphere{
             refl_t: refl_t
         }
     }
-    fn intersect(&self, ray: &Ray) -> f32{
+    fn intersect(&self, ray: &Ray) -> Option<f32>{
         let op = &self.position - &ray.origin;
         let mut t: f32;
-        let eps = 1e-4;
         let b = op.dot(&ray.direction);
         let mut delta = b * b - op.dot(&op) + self.radiance * self.radiance;
 
-        if delta < 0f32{
-            return 0f32;
-        }
-        else{
+        if delta > 0.0{
             delta = delta.sqrt();
         }
         t = b - delta;
-        if t > eps{
-            return t;
+        if t > 0.0{
+            return Some(t);
         }
         else{
             t = b + delta;
-            if t > eps{
-                return t;
+            if t > 0.0{
+                return Some(t);
             }
         }
-        0f32
+        None
     }
 }
 
-fn radiance(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
-    let t = INFINITY;
-    let id: Option<usize>;
+fn color(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
+    let mut t = INFINITY;
+    let mut id: Option<usize> = None;
     for i in 0..scene.len(){
-        let d = scene[i].intersect(ray);
-        if d > 1e-20 && d < t{
-            t = d;
-            id = Some(i);
+        let distance = scene[i].intersect(ray);
+        if let Some(distance) = distance{
+            if distance < t{
+                t = distance;
+                id = Some(i);
+            }
         }
     }
     if let Some(id) = id{
+        let hit_pos = &ray.origin + &(&ray.direction * t);
     }
     Vec3(0., 0., 0.)
 }
@@ -161,9 +168,9 @@ fn main() {
         // Top
         Sphere::new(1e5, Vec3(50.0, -1e5 + 81.6, 81.6), Vec3(0., 0., 0.), Vec3(0.75, 0.75, 0.75), Refl_t::DIFF),
         // Metal ball
-        Sphere::new(16.5, Vec3(27.0, 16.5, 47.0), Vec3(0., 0., 0.), Vec3(1., 1., 1.) * 0.999, Refl_t::SPEC),
+        Sphere::new(16.5, Vec3(27.0, 16.5, 47.0), Vec3(0., 0., 0.), &Vec3(1., 1., 1.) * 0.999, Refl_t::SPEC),
         // Glass ball
-        Sphere::new(16.5, Vec3(73.0, 16.5, 78.0), Vec3(0., 0., 0.), Vec3(1., 1., 1.) * 0.999, Refl_t::REFR),
+        Sphere::new(16.5, Vec3(73.0, 16.5, 78.0), Vec3(0., 0., 0.), &Vec3(1., 1., 1.) * 0.999, Refl_t::REFR),
         // Light
         Sphere::new(600.0, Vec3(50.0, 681.6 - 0.27, 81.6), Vec3(12.0, 12.0, 12.0), Vec3(0., 0., 0.), Refl_t::DIFF),
     ];
