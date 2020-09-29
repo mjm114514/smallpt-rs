@@ -11,20 +11,20 @@ use std::f32::INFINITY;
 struct Vec3(f32, f32, f32);
 
 impl Vec3{
-    fn dot(&self, other: &Vec3) -> f32{
+    fn dot(&self, other: Vec3) -> f32{
         self.0 * other.0 + self.1 * other.1 + self.2 * other.2
     }
     fn length(&self) -> f32{
         1.0 / (self.0 * self.0 + self.1 * self.1 + self.2 * self.2).sqrt()
     }
-    fn cross(&self, other: &Vec3) -> Vec3{
+    fn cross(&self, other: Vec3) -> Vec3{
         Vec3(
             self.1 * other.2 - self.2 * other.1,
             self.2 * other.0 - self.0 * other.2,
             self.1 * other.2 - self.2 * other.1
         )
     }
-    fn normalize(&mut self) -> &Vec3{
+    fn normalize<'t>(&'t mut self) -> &'t Vec3{
         let len = self.length();
         self.0 /= len;
         self.1 /= len;
@@ -32,9 +32,9 @@ impl Vec3{
         self
     }
 }
-impl Add<&Vec3> for &Vec3{
+impl Add<Vec3> for Vec3{
     type Output = Vec3;
-    fn add(self, other: &Vec3) -> Vec3{
+    fn add(self, other: Vec3) -> Vec3{
         Vec3(
             self.0 + other.0,
             self.1 + other.1,
@@ -42,9 +42,9 @@ impl Add<&Vec3> for &Vec3{
         )
     }
 }
-impl Sub<&Vec3> for &Vec3{
+impl Sub<Vec3> for Vec3{
     type Output = Vec3;
-    fn sub(self, other: &Vec3) -> Vec3{
+    fn sub(self, other: Vec3) -> Vec3{
         Vec3(
             self.0 - other.0,
             self.1 - other.1,
@@ -52,7 +52,7 @@ impl Sub<&Vec3> for &Vec3{
         )
     }
 }
-impl Mul<f32> for &Vec3{
+impl Mul<f32> for Vec3{
     type Output = Vec3;
     fn mul(self, k: f32) -> Vec3{
         Vec3(
@@ -62,9 +62,9 @@ impl Mul<f32> for &Vec3{
         )
     }
 }
-impl Mul<&Vec3> for &Vec3{
+impl Mul<Vec3> for Vec3{
     type Output = Vec3;
-    fn mul(self, other: &Vec3) -> Vec3{
+    fn mul(self, other: Vec3) -> Vec3{
         Vec3(
             self.0 * other.0,
             self.1 * other.1,
@@ -112,10 +112,10 @@ impl Sphere{
         }
     }
     fn intersect(&self, ray: &Ray) -> Option<f32>{
-        let op = &self.position - &ray.origin;
+        let op = self.position - ray.origin;
         let mut t: f32;
-        let b = op.dot(&ray.direction);
-        let mut delta = b * b - op.dot(&op) + self.radiance * self.radiance;
+        let b = op.dot(ray.direction);
+        let mut delta = b * b - op.dot(op) + self.radiance * self.radiance;
 
         if delta > 0.0{
             delta = delta.sqrt();
@@ -147,7 +147,9 @@ fn color(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
         }
     }
     if let Some(id) = id{
-        let hit_pos = &ray.origin + &(&ray.direction * t);
+        let hit_pos = ray.origin + (ray.direction * t);
+        let hit_normal = (hit_pos - scene[id].position).normalize();
+
     }
     Vec3(0., 0., 0.)
 }
@@ -168,9 +170,9 @@ fn main() {
         // Top
         Sphere::new(1e5, Vec3(50.0, -1e5 + 81.6, 81.6), Vec3(0., 0., 0.), Vec3(0.75, 0.75, 0.75), Refl_t::DIFF),
         // Metal ball
-        Sphere::new(16.5, Vec3(27.0, 16.5, 47.0), Vec3(0., 0., 0.), &Vec3(1., 1., 1.) * 0.999, Refl_t::SPEC),
+        Sphere::new(16.5, Vec3(27.0, 16.5, 47.0), Vec3(0., 0., 0.), Vec3(1., 1., 1.) * 0.999, Refl_t::SPEC),
         // Glass ball
-        Sphere::new(16.5, Vec3(73.0, 16.5, 78.0), Vec3(0., 0., 0.), &Vec3(1., 1., 1.) * 0.999, Refl_t::REFR),
+        Sphere::new(16.5, Vec3(73.0, 16.5, 78.0), Vec3(0., 0., 0.), Vec3(1., 1., 1.) * 0.999, Refl_t::REFR),
         // Light
         Sphere::new(600.0, Vec3(50.0, 681.6 - 0.27, 81.6), Vec3(12.0, 12.0, 12.0), Vec3(0., 0., 0.), Refl_t::DIFF),
     ];
