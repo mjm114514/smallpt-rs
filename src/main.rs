@@ -4,18 +4,18 @@ use std::path::Path;
 use std::ops::Add;
 use std::ops::Sub;
 use std::ops::Mul;
-use std::f32::INFINITY;
-use std::f32::consts::PI;
+use std::f64::INFINITY;
+use std::f64::consts::PI;
 use rand::Rng;
 
 #[derive(Copy, Clone)]
-struct Vec3(f32, f32, f32);
+struct Vec3(f64, f64, f64);
 
 impl Vec3{
-    fn dot(&self, other: Vec3) -> f32{
+    fn dot(&self, other: Vec3) -> f64{
         self.0 * other.0 + self.1 * other.1 + self.2 * other.2
     }
-    fn length(&self) -> f32{
+    fn length(&self) -> f64{
         1.0 / (self.0 * self.0 + self.1 * self.1 + self.2 * self.2).sqrt()
     }
     fn cross(&self, other: Vec3) -> Vec3{
@@ -53,9 +53,9 @@ impl Sub<Vec3> for Vec3{
         )
     }
 }
-impl Mul<f32> for Vec3{
+impl Mul<f64> for Vec3{
     type Output = Vec3;
-    fn mul(self, k: f32) -> Vec3{
+    fn mul(self, k: f64) -> Vec3{
         Vec3(
             self.0 * k,
             self.1 * k,
@@ -63,7 +63,7 @@ impl Mul<f32> for Vec3{
         )
     }
 }
-impl Mul<Vec3> for f32{
+impl Mul<Vec3> for f64{
     type Output = Vec3;
     fn mul(self, other: Vec3) -> Vec3{
         Vec3(
@@ -93,7 +93,7 @@ impl Ray{
     fn new(origin: &Vec3, direction: &Vec3) -> Self{
         Ray{
             origin: Vec3(origin.0, origin.1, origin.2),
-            direction: Vec3(origin.0, origin.1, origin.2)
+            direction: Vec3(direction.0, direction.1, direction.2)
         }
     }
 }
@@ -105,7 +105,7 @@ enum Refl_t {
 }
 
 struct Sphere{
-    radiance: f32,
+    radiance: f64,
     position: Vec3,
     emission: Vec3,
     color: Vec3,
@@ -113,7 +113,7 @@ struct Sphere{
 }
 
 impl Sphere{
-    fn new(radiance: f32, position: Vec3, emission: Vec3, color: Vec3, refl_t: Refl_t) -> Self{
+    fn new(radiance: f64, position: Vec3, emission: Vec3, color: Vec3, refl_t: Refl_t) -> Self{
         Sphere{
             radiance: radiance,
             position: position,
@@ -122,9 +122,9 @@ impl Sphere{
             refl_t: refl_t
         }
     }
-    fn intersect(&self, ray: &Ray) -> Option<f32>{
+    fn intersect(&self, ray: &Ray) -> Option<f64>{
         let op = self.position - ray.origin;
-        let mut t: f32;
+        let mut t: f64;
         let b = op.dot(ray.direction);
         let mut delta = b * b - op.dot(op) + self.radiance * self.radiance;
 
@@ -171,12 +171,12 @@ fn color(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
         }
 
         match scene[id].refl_t{
-            Refl_t::DIFF => {
-                let rand1: f32 = rng.gen();
-                let rand2: f32 = rng.gen();
+            Refl_t::DIFF => {  // Ideal DIFFUSE reflection
+                let rand1: f64 = rng.gen();
+                let rand2: f64 = rng.gen();
 
                 let r1 = 2.0 * PI * rand1;
-                let r2 = rand2.sqrt();
+                let r2s = rand2.sqrt();
                 let w = nl;
                 let u: Vec3;
                 if w.0 > 0.1{
@@ -186,12 +186,70 @@ fn color(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
                     u = Vec3(1.0, 0.0, 0.0).cross(w).normalize();
                 }
                 let v = w.cross(u);
+
+                let dir = (r1.cos() * r2s * u + r1.sin() * r2s * v + (1.0 - rand2).sqrt() * w).normalize();
+
+                return scene[id].emission + f * color(scene, &Ray::new(&hit_pos, &dir), depth + 1);
             },
             Refl_t::REFR => {
-                
-            },
-            Refl_t::SPEC => {
+                let refl_dir = ray.direction - 2.0 * hit_normal.dot(ray.direction) * hit_normal;
+                let refl_ray = Ray::new(&hit_pos, &refl_dir);
+                let into = hit_normal.dot(nl) > 0.0;
+                let nc = 1.0;
+                let nt = 1.5;
+                let nnt: f64;
+                if into{
+                    nnt = nc / nt;
+                }
+                else{
+                    nnt = nt / nc;
+                }
+                let ddotn = ray.direction.dot(nl);
+                let cos2t = 1.0 - nnt * nnt * (1.0 - ddotn * ddotn);
+                if cos2t < 0.0{
+                    // Total Internal reflection
+                    return scene[id].emission + f * color(scene, &refl_ray, depth + 1);
+                }
+                let refr_dir: Vec3;
+                let a = nt - nc;
+                let b = nt + nc;
+                let r0 = a * a / (b * b);
+                let c;
+                if into{
+                    refr_dir = (ray.direction * nnt - hit_normal * (ddotn * nnt + cos2t.sqrt())).normalize();
+                    c = 1.0 + ddotn;
+                }
+                else{
+                    refr_dir = (ray.direction * nnt - hit_normal * -1.0 * (ddotn * nnt * cos2t.sqrt())).normalize();
+                    c = 1.0 - (refr_dir.dot(hit_normal));
+                }
 
+                let re = r0 + (1.0 - r0) * c * c * c * c * c;
+                let tr = 1.0 - re;
+                let p = 0.25 + 0.5 * re;
+                let rp = re / p;
+                let tp = tr / (1.0 - p);
+
+                let r: f64 = rng.gen();
+
+
+                if depth > 2{
+                    if r < p{
+                        return scene[id].emission + rp * f * color(scene, &refl_ray, depth + 1);
+                    }
+                    else{
+                        return scene[id].emission + tp * f * color(scene, &Ray::new(&hit_pos, &refr_dir), depth + 1);
+                    }
+                }
+                else{
+                    return scene[id].emission +
+                        re * color(scene, &refl_ray, depth + 1) +
+                        tr * color(scene, &Ray::new(&hit_pos, &refr_dir), depth + 1);
+                }
+            },
+            Refl_t::SPEC => { // Ideal SPECULAR reflection
+                let dir = ray.direction - 2.0 * hit_normal.dot(ray.direction) * hit_normal;
+                return scene[id].emission + f * color(scene, &Ray::new(&hit_pos, &dir), depth + 1);
             }
         }
     }
