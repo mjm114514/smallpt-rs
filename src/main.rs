@@ -5,7 +5,8 @@ use std::ops::Add;
 use std::ops::Sub;
 use std::ops::Mul;
 use std::f32::INFINITY;
-
+use std::f32::consts::PI;
+use rand::Rng;
 
 #[derive(Copy, Clone)]
 struct Vec3(f32, f32, f32);
@@ -24,7 +25,7 @@ impl Vec3{
             self.1 * other.2 - self.2 * other.1
         )
     }
-    fn normalize<'t>(&'t mut self) -> &'t Vec3{
+    fn normalize(mut self) -> Vec3{
         let len = self.length();
         self.0 /= len;
         self.1 /= len;
@@ -59,6 +60,16 @@ impl Mul<f32> for Vec3{
             self.0 * k,
             self.1 * k,
             self.2 * k
+        )
+    }
+}
+impl Mul<Vec3> for f32{
+    type Output = Vec3;
+    fn mul(self, other: Vec3) -> Vec3{
+        Vec3(
+            self * other.0,
+            self * other.1,
+            self * other.2
         )
     }
 }
@@ -147,11 +158,44 @@ fn color(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
         }
     }
     if let Some(id) = id{
+        let mut rng = rand::thread_rng();
         let hit_pos = ray.origin + (ray.direction * t);
         let hit_normal = (hit_pos - scene[id].position).normalize();
+        let f = scene[id].color;
+        let nl: Vec3;
+        if hit_normal.dot(ray.direction) < 0.0{
+            nl = hit_normal;
+        }
+        else{
+            nl = -1.0 * hit_normal;
+        }
 
+        match scene[id].refl_t{
+            Refl_t::DIFF => {
+                let rand1: f32 = rng.gen();
+                let rand2: f32 = rng.gen();
+
+                let r1 = 2.0 * PI * rand1;
+                let r2 = rand2.sqrt();
+                let w = nl;
+                let u: Vec3;
+                if w.0 > 0.1{
+                    u = Vec3(0.0, 1.0, 0.0).cross(w).normalize();
+                }
+                else{
+                    u = Vec3(1.0, 0.0, 0.0).cross(w).normalize();
+                }
+                let v = w.cross(u);
+            },
+            Refl_t::REFR => {
+                
+            },
+            Refl_t::SPEC => {
+
+            }
+        }
     }
-    Vec3(0., 0., 0.)
+    Vec3(0., 0., 0.) // if miss return black color
 }
 
 fn main() {
