@@ -7,6 +7,8 @@ use std::ops::Mul;
 use std::f64::INFINITY;
 use std::f64::consts::PI;
 use rand::Rng;
+use std::thread;
+use std::sync::{mpsc, Arc};
 
 #[derive(Copy, Clone)]
 struct Vec3(f64, f64, f64);
@@ -98,7 +100,7 @@ impl Ray{
     }
 }
 
-enum Refl_t {
+enum ReflType {
     DIFF,
     SPEC,
     REFR
@@ -109,11 +111,11 @@ struct Sphere{
     position: Vec3,
     emission: Vec3,
     color: Vec3,
-    refl_t: Refl_t
+    refl_t: ReflType
 }
 
 impl Sphere{
-    fn new(radiance: f64, position: Vec3, emission: Vec3, color: Vec3, refl_t: Refl_t) -> Self{
+    fn new(radiance: f64, position: Vec3, emission: Vec3, color: Vec3, refl_t: ReflType) -> Self{
         Sphere{
             radiance: radiance,
             position: position,
@@ -128,16 +130,17 @@ impl Sphere{
         let b = op.dot(ray.direction);
         let mut delta = b * b - op.dot(op) + self.radiance * self.radiance;
 
-        if delta > 0.0{
-            delta = delta.sqrt();
+        if delta < 0.0{
+            return None;
         }
+        delta = delta.sqrt();
         t = b - delta;
-        if t > 0.0{
+        if t > 1e-4{
             return Some(t);
         }
         else{
             t = b + delta;
-            if t > 0.0{
+            if t > 1e-4{
                 return Some(t);
             }
         }
@@ -145,14 +148,11 @@ impl Sphere{
     }
 }
 
-fn color(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
-    if depth > 100{
-        println!("??");
-    }
+fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32) -> Vec3{
     let mut t = INFINITY;
     let mut id: Option<usize> = None;
     let mut rng = rand::thread_rng();
-    for i in 0..scene.len(){
+    for i in (0..scene.len()).rev(){
         let distance = scene[i].intersect(ray);
         if let Some(distance) = distance{
             if distance < t{
@@ -192,7 +192,7 @@ fn color(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
         }
 
         match scene[id].refl_t{
-            Refl_t::DIFF => {  // Ideal DIFFUSE reflection
+            ReflType::DIFF => {  // Ideal DIFFUSE reflection
                 let rand1: f64 = rng.gen();
                 let rand2: f64 = rng.gen();
 
@@ -200,7 +200,7 @@ fn color(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
                 let r2s = rand2.sqrt();
                 let w = nl;
                 let u: Vec3;
-                if w.0 > 0.1{
+                if w.0.abs() > 0.1{
                     u = Vec3(0.0, 1.0, 0.0).cross(w).normalize();
                 }
                 else{
@@ -210,9 +210,9 @@ fn color(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
 
                 let dir = (r1.cos() * r2s * u + r1.sin() * r2s * v + (1.0 - rand2).sqrt() * w).normalize();
 
-                return scene[id].emission + f * color(scene, &Ray::new(&hit_pos, &dir), depth + 1);
+                return scene[id].emission + f * color(scene.clone(), &Ray::new(&hit_pos, &dir), depth + 1);
             },
-            Refl_t::REFR => {
+            ReflType::REFR => {
                 let refl_dir = ray.direction - 2.0 * hit_normal.dot(ray.direction) * hit_normal;
                 let refl_ray = Ray::new(&hit_pos, &refl_dir);
                 let into = hit_normal.dot(nl) > 0.0;
@@ -229,7 +229,8 @@ fn color(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
                 let cos2t = 1.0 - nnt * nnt * (1.0 - ddotn * ddotn);
                 if cos2t < 0.0{
                     // Total Internal reflection
-                    return scene[id].emission + f * color(scene, &refl_ray, depth + 1);
+                    println!("total reflection depth {}", depth);
+                    return scene[id].emission + f * color(scene.clone(), &refl_ray, depth + 1);
                 }
                 let refr_dir: Vec3;
                 let a = nt - nc;
@@ -256,21 +257,22 @@ fn color(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
 
                 if depth > 2{
                     if r < p{
-                        return scene[id].emission + rp * f * color(scene, &refl_ray, depth + 1);
+                        return scene[id].emission + rp * f * color(scene.clone(), &refl_ray, depth + 1);
                     }
                     else{
-                        return scene[id].emission + tp * f * color(scene, &Ray::new(&hit_pos, &refr_dir), depth + 1);
+                        return scene[id].emission + tp * f * color(scene.clone(), &Ray::new(&hit_pos, &refr_dir), depth + 1);
                     }
                 }
                 else{
-                    return scene[id].emission +
-                        re * color(scene, &refl_ray, depth + 1) +
-                        tr * color(scene, &Ray::new(&hit_pos, &refr_dir), depth + 1);
+                    return scene[id].emission + f * (
+                            re * color(scene.clone(), &refl_ray, depth + 1) +
+                            tr * color(scene.clone(), &Ray::new(&hit_pos, &refr_dir), depth + 1)
+                        );
                 }
             },
-            Refl_t::SPEC => { // Ideal SPECULAR reflection
+            ReflType::SPEC => { // Ideal SPECULAR reflection
                 let dir = ray.direction - 2.0 * hit_normal.dot(ray.direction) * hit_normal;
-                return scene[id].emission + f * color(scene, &Ray::new(&hit_pos, &dir), depth + 1);
+                return scene[id].emission + f * color(scene.clone(), &Ray::new(&hit_pos, &dir), depth + 1);
             }
         }
     }
@@ -293,86 +295,100 @@ fn to_int(x: f64) -> i32{
 
 fn main() {
 
-    let scene = [
+    let scene = Arc::new([
         // Left
-        Sphere::new(1e5, Vec3(1e5 + 1.0, 40.8, 81.6), Vec3(0., 0., 0.), Vec3(0.75, 0.75, 0.75), Refl_t::DIFF),
+        Sphere::new(1e5, Vec3(1e5 + 1.0, 40.8, 81.6), Vec3(0., 0., 0.), Vec3(0.75, 0.25, 0.25), ReflType::DIFF),
         // Right
-        Sphere::new(1e5, Vec3(-1e5 + 99.0, 40.8, 81.6), Vec3(0., 0., 0.), Vec3(0.25, 0.25, 0.25), Refl_t::DIFF),
+        Sphere::new(1e5, Vec3(-1e5 + 99.0, 40.8, 81.6), Vec3(0., 0., 0.), Vec3(0.25, 0.25, 0.75), ReflType::DIFF),
         // Back
-        Sphere::new(1e5, Vec3(50.0, 40.8, 1e5), Vec3(0., 0., 0.), Vec3(0.75, 0.75, 0.75), Refl_t::DIFF),
+        Sphere::new(1e5, Vec3(50.0, 40.8, 1e5), Vec3(0., 0., 0.), Vec3(0.75, 0.75, 0.75), ReflType::DIFF),
         // Front
-        Sphere::new(1e5, Vec3(50.0, 40.8, -1e5 + 170.0), Vec3(0., 0., 0.), Vec3(0., 0., 0.), Refl_t::DIFF),
+        Sphere::new(1e5, Vec3(50.0, 40.8, -1e5 + 170.0), Vec3(0., 0., 0.), Vec3(0., 0., 0.), ReflType::DIFF),
         // Bottom
-        Sphere::new(1e5, Vec3(50.0, 1e5, 81.6), Vec3(0., 0., 0.), Vec3(0.75, 0.75, 0.75), Refl_t::DIFF),
+        Sphere::new(1e5, Vec3(50.0, 1e5, 81.6), Vec3(0., 0., 0.), Vec3(0.75, 0.75, 0.75), ReflType::DIFF),
         // Top
-        Sphere::new(1e5, Vec3(50.0, -1e5 + 81.6, 81.6), Vec3(0., 0., 0.), Vec3(0.75, 0.75, 0.75), Refl_t::DIFF),
+        Sphere::new(1e5, Vec3(50.0, -1e5 + 81.6, 81.6), Vec3(0., 0., 0.), Vec3(0.75, 0.75, 0.75), ReflType::DIFF),
         // Metal ball
-        Sphere::new(16.5, Vec3(27.0, 16.5, 47.0), Vec3(0., 0., 0.), Vec3(1., 1., 1.) * 0.999, Refl_t::SPEC),
+        Sphere::new(16.5, Vec3(27.0, 16.5, 47.0), Vec3(0., 0., 0.), Vec3(1., 1., 1.) * 0.999, ReflType::SPEC),
         // Glass ball
-        Sphere::new(16.5, Vec3(73.0, 16.5, 78.0), Vec3(0., 0., 0.), Vec3(1., 1., 1.) * 0.999, Refl_t::REFR),
+        Sphere::new(16.5, Vec3(73.0, 16.5, 78.0), Vec3(0., 0., 0.), Vec3(1., 1., 1.) * 0.999, ReflType::REFR),
         // Light
-        Sphere::new(600.0, Vec3(50.0, 681.6 - 0.27, 81.6), Vec3(12.0, 12.0, 12.0), Vec3(0., 0., 0.), Refl_t::DIFF),
-    ];
+        Sphere::new(600.0, Vec3(50.0, 681.6 - 0.27, 81.6), Vec3(12.0, 12.0, 12.0), Vec3(0., 0., 0.), ReflType::DIFF),
+    ]);
 
     let width = 1024;
     let height = 768;
-    let samps = 8;
+    let samps = 2;
 
-    let cam = Ray::new(&Vec3(50.0, 52.0, 295.6), &Vec3(0.0, -0.042612, -1.0).normalize()); // camera position and direction
+    let cam_pos = Vec3(50.0, 52.0, 295.6);
+    let cam_look = Vec3(0.0, -0.042612, -1.0).normalize();
 
     let cx = Vec3(width as f64 * 0.5135 / height as f64, 0.0, 0.0);
-    let cy = cx.cross(cam.direction).normalize() * 0.5135;
+    let cy = cx.cross(cam_look).normalize() * 0.5135;
 
     let mut c = vec![Vec3(0.0, 0.0, 0.0); width * height];
 
-    let mut rng = rand::thread_rng();
+    let (tx, rx) = mpsc::channel();
 
     for y in 0..height{
         // Loop over rows
-        print!("\rRendering ({} spp) {:.2}", samps * 4, 100.0 * y as f64 / (height as f64 - 1.0));
+        print!("\rRendering ({} spp) {:.2}%", samps * 4, 100.0 * y as f64 / (height as f64 - 1.0));
         for x in 0..width{
             // loop over cols
             let i = (height - y - 1) * width + x;
+            let ttx = tx.clone();
+
+            let scene_ref = scene.clone();
             // 2x2 sub pixels(4x SSAA)
-            for sy in 0..2{
-                for sx in 0..2{
-                    let mut r = Vec3(0.0, 0.0, 0.0);
-                    // samples on each pixel
-                    for _s in 0..samps{
-                        let mut r1: f64 = rng.gen();
-                        r1 *= 2.0;
-                        let dx: f64;
-                        if r1 < 1.0{
-                            dx = r1.sqrt() - 1.0;
-                        }
-                        else{
-                            dx = 1.0 - (2.0 - r1).sqrt();
-                        }
+            thread::spawn(move || {
+                let mut rng = rand::thread_rng();
+                let mut c = Vec3(0.0, 0.0, 0.0);
+                for sy in 0..2{
+                    for sx in 0..2{
+                        let mut r = Vec3(0.0, 0.0, 0.0);
+                        // samples on each pixel
+                        for _s in 0..samps{
+                            let mut r1: f64 = rng.gen();
+                            r1 *= 2.0;
+                            let dx: f64;
+                            if r1 < 1.0{
+                                dx = r1.sqrt() - 1.0;
+                            }
+                            else{
+                                dx = 1.0 - (2.0 - r1).sqrt();
+                            }
 
-                        let mut r2: f64 = rng.gen();
-                        let dy: f64;
-                        r2 *= 2.0;
-                        if r2 < 1.0{
-                            dy = r2.sqrt() - 1.0;
-                        }
-                        else{
-                            dy = 1.0 - (2.0 - r2).sqrt();
-                        }
+                            let mut r2: f64 = rng.gen();
+                            let dy: f64;
+                            r2 *= 2.0;
+                            if r2 < 1.0{
+                                dy = r2.sqrt() - 1.0;
+                            }
+                            else{
+                                dy = 1.0 - (2.0 - r2).sqrt();
+                            }
 
-                        let dir = cx * (((sx as f64 + 0.5 + dx) / 2.0 + x as f64) / width as f64 - 0.5) +
-                                  cy * (((sy as f64 + 0.5 + dy) / 2.0 + y as f64) / height as f64 - 0.5) + cam.direction;
-                        
-                        let color = color(&scene, &Ray::new(&(cam.origin + dir * 140.0), &dir.normalize()), 0);
-                        r = color + r;
+                            let dir = cx * (((sx as f64 + 0.5 + dx) / 2.0 + x as f64) / width as f64 - 0.5) +
+                                    cy * (((sy as f64 + 0.5 + dy) / 2.0 + y as f64) / height as f64 - 0.5) + cam_look;
+                            
+                            r = r + color(scene_ref.clone(), &Ray::new(&(cam_pos + dir * 140.0), &dir.normalize()), 0) * (1.0 / samps as f64);
+                        }
+                        c = c + 0.25 * Vec3(
+                            clamp(r.0),
+                            clamp(r.1),
+                            clamp(r.2)
+                        );
                     }
-                    c[i] = c[i] + 0.25 * Vec3(
-                        clamp(r.0),
-                        clamp(r.1),
-                        clamp(r.2)
-                    );
                 }
-            }
+                ttx.send((i, c)).unwrap();
+            });
+
         }
+    }
+
+    for _i in 0..width * height{
+        let (pos, value) = rx.recv().unwrap();
+        c[pos] = value;
     }
 
     let mut f = match File::create(&Path::new("image.ppm")){
@@ -382,10 +398,6 @@ fn main() {
 
     f.write("P3\n".as_bytes()).expect("Failed to write");
     write!(f, "{}\n{}\n{}\n", width, height, 255).expect("Failed to write");
-
-    for i in 0..width * height{
-        print!("{} {} {} ", c[i].0, c[i].1, c[i].2);
-    }
 
     for i in 0..width * height{
         write!(f, "{} {} {} ", to_int(c[i].0), to_int(c[i].1), to_int(c[i].2))
