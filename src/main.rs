@@ -16,7 +16,7 @@ impl Vec3{
         self.0 * other.0 + self.1 * other.1 + self.2 * other.2
     }
     fn length(&self) -> f64{
-        1.0 / (self.0 * self.0 + self.1 * self.1 + self.2 * self.2).sqrt()
+        (self.0 * self.0 + self.1 * self.1 + self.2 * self.2).sqrt()
     }
     fn cross(&self, other: Vec3) -> Vec3{
         Vec3(
@@ -146,8 +146,12 @@ impl Sphere{
 }
 
 fn color(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
+    if depth > 100{
+        println!("??");
+    }
     let mut t = INFINITY;
     let mut id: Option<usize> = None;
+    let mut rng = rand::thread_rng();
     for i in 0..scene.len(){
         let distance = scene[i].intersect(ray);
         if let Some(distance) = distance{
@@ -158,10 +162,27 @@ fn color(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
         }
     }
     if let Some(id) = id{
-        let mut rng = rand::thread_rng();
+        let mut f = scene[id].color;
+
+        if depth > 5{
+            let rand: f64 = rng.gen();
+            let mut p = f.0;
+            if f.1 > p{
+                p = f.1;
+            }
+            if f.2 > p{
+                p = f.2;
+            }
+            if rand < p{
+                f = f * (1.0 / p);
+            }
+            else{
+                return scene[id].emission;
+            }
+        }
+
         let hit_pos = ray.origin + (ray.direction * t);
         let hit_normal = (hit_pos - scene[id].position).normalize();
-        let f = scene[id].color;
         let nl: Vec3;
         if hit_normal.dot(ray.direction) < 0.0{
             nl = hit_normal;
@@ -256,6 +277,20 @@ fn color(scene: &[Sphere], ray: &Ray, depth: i32) -> Vec3{
     Vec3(0., 0., 0.) // if miss return black color
 }
 
+fn clamp(s: f64) -> f64{
+    if s < 0.0{
+        return 0.0;
+    }
+    else if s > 1.0{
+        return 1.0;
+    }
+    s
+}
+
+fn to_int(x: f64) -> i32{
+    (clamp(x).powf(1.0 / 2.2) * 255.0 + 0.5) as i32
+}
+
 fn main() {
 
     let scene = [
@@ -279,20 +314,81 @@ fn main() {
         Sphere::new(600.0, Vec3(50.0, 681.6 - 0.27, 81.6), Vec3(12.0, 12.0, 12.0), Vec3(0., 0., 0.), Refl_t::DIFF),
     ];
 
-    let row = 256;
-    let col = 256;
-    let level = 255;
-    let mut f = match File::create(&Path::new("/home/jiaming/test.ppm")){
-        Err(why) => panic!("Couldn't open {}: {}", "test.ppm", why),
+    let width = 1024;
+    let height = 768;
+    let samps = 8;
+
+    let cam = Ray::new(&Vec3(50.0, 52.0, 295.6), &Vec3(0.0, -0.042612, -1.0).normalize()); // camera position and direction
+
+    let cx = Vec3(width as f64 * 0.5135 / height as f64, 0.0, 0.0);
+    let cy = cx.cross(cam.direction).normalize() * 0.5135;
+
+    let mut c = vec![Vec3(0.0, 0.0, 0.0); width * height];
+
+    let mut rng = rand::thread_rng();
+
+    for y in 0..height{
+        // Loop over rows
+        print!("\rRendering ({} spp) {:.2}", samps * 4, 100.0 * y as f64 / (height as f64 - 1.0));
+        for x in 0..width{
+            // loop over cols
+            let i = (height - y - 1) * width + x;
+            // 2x2 sub pixels(4x SSAA)
+            for sy in 0..2{
+                for sx in 0..2{
+                    let mut r = Vec3(0.0, 0.0, 0.0);
+                    // samples on each pixel
+                    for _s in 0..samps{
+                        let mut r1: f64 = rng.gen();
+                        r1 *= 2.0;
+                        let dx: f64;
+                        if r1 < 1.0{
+                            dx = r1.sqrt() - 1.0;
+                        }
+                        else{
+                            dx = 1.0 - (2.0 - r1).sqrt();
+                        }
+
+                        let mut r2: f64 = rng.gen();
+                        let dy: f64;
+                        r2 *= 2.0;
+                        if r2 < 1.0{
+                            dy = r2.sqrt() - 1.0;
+                        }
+                        else{
+                            dy = 1.0 - (2.0 - r2).sqrt();
+                        }
+
+                        let dir = cx * (((sx as f64 + 0.5 + dx) / 2.0 + x as f64) / width as f64 - 0.5) +
+                                  cy * (((sy as f64 + 0.5 + dy) / 2.0 + y as f64) / height as f64 - 0.5) + cam.direction;
+                        
+                        let color = color(&scene, &Ray::new(&(cam.origin + dir * 140.0), &dir.normalize()), 0);
+                        r = color + r;
+                    }
+                    c[i] = c[i] + 0.25 * Vec3(
+                        clamp(r.0),
+                        clamp(r.1),
+                        clamp(r.2)
+                    );
+                }
+            }
+        }
+    }
+
+    let mut f = match File::create(&Path::new("image.ppm")){
+        Err(why) => panic!("Couldn't open {}: {}", "image.ppm", why),
         Ok(file) => file
     };
 
     f.write("P3\n".as_bytes()).expect("Failed to write");
-    write!(f, "{}\n{}\n{}\n", row, col, level).expect("Failed to write");
+    write!(f, "{}\n{}\n{}\n", width, height, 255).expect("Failed to write");
 
-    for _i in 0..row{
-        for _j in 0..col{
-            f.write("0 255 255\n".as_bytes()).expect("Failed to write");
-        }
+    for i in 0..width * height{
+        print!("{} {} {} ", c[i].0, c[i].1, c[i].2);
+    }
+
+    for i in 0..width * height{
+        write!(f, "{} {} {} ", to_int(c[i].0), to_int(c[i].1), to_int(c[i].2))
+            .expect("Failed to write");
     }
 }
