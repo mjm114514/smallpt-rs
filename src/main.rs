@@ -24,7 +24,7 @@ impl Vec3{
         Vec3(
             self.1 * other.2 - self.2 * other.1,
             self.2 * other.0 - self.0 * other.2,
-            self.1 * other.2 - self.2 * other.1
+            self.0 * other.1 - self.1 * other.0
         )
     }
     fn normalize(mut self) -> Vec3{
@@ -148,10 +148,9 @@ impl Sphere{
     }
 }
 
-fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32) -> Vec3{
+fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) -> Vec3{
     let mut t = INFINITY;
     let mut id: Option<usize> = None;
-    let mut rng = rand::thread_rng();
     for i in (0..scene.len()).rev(){
         let distance = scene[i].intersect(ray);
         if let Some(distance) = distance{
@@ -210,7 +209,7 @@ fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32) -> Vec3{
 
                 let dir = (r1.cos() * r2s * u + r1.sin() * r2s * v + (1.0 - rand2).sqrt() * w).normalize();
 
-                return scene[id].emission + f * color(scene.clone(), &Ray::new(&hit_pos, &dir), depth + 1);
+                return scene[id].emission + f * color(scene.clone(), &Ray::new(&hit_pos, &dir), depth + 1, rng);
             },
             ReflType::REFR => {
                 let refl_dir = ray.direction - 2.0 * hit_normal.dot(ray.direction) * hit_normal;
@@ -230,7 +229,7 @@ fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32) -> Vec3{
                 if cos2t < 0.0{
                     // Total Internal reflection
                     println!("total reflection depth {}", depth);
-                    return scene[id].emission + f * color(scene.clone(), &refl_ray, depth + 1);
+                    return scene[id].emission + f * color(scene.clone(), &refl_ray, depth + 1, rng);
                 }
                 let refr_dir: Vec3;
                 let a = nt - nc;
@@ -242,7 +241,7 @@ fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32) -> Vec3{
                     c = 1.0 + ddotn;
                 }
                 else{
-                    refr_dir = (ray.direction * nnt - hit_normal * -1.0 * (ddotn * nnt * cos2t.sqrt())).normalize();
+                    refr_dir = (ray.direction * nnt - hit_normal * -1.0 * (ddotn * nnt + cos2t.sqrt())).normalize();
                     c = 1.0 - (refr_dir.dot(hit_normal));
                 }
 
@@ -257,22 +256,22 @@ fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32) -> Vec3{
 
                 if depth > 2{
                     if r < p{
-                        return scene[id].emission + rp * f * color(scene.clone(), &refl_ray, depth + 1);
+                        return scene[id].emission + rp * f * color(scene.clone(), &refl_ray, depth + 1, rng);
                     }
                     else{
-                        return scene[id].emission + tp * f * color(scene.clone(), &Ray::new(&hit_pos, &refr_dir), depth + 1);
+                        return scene[id].emission + tp * f * color(scene.clone(), &Ray::new(&hit_pos, &refr_dir), depth + 1, rng);
                     }
                 }
                 else{
                     return scene[id].emission + f * (
-                            re * color(scene.clone(), &refl_ray, depth + 1) +
-                            tr * color(scene.clone(), &Ray::new(&hit_pos, &refr_dir), depth + 1)
+                            re * color(scene.clone(), &refl_ray, depth + 1, rng) +
+                            tr * color(scene.clone(), &Ray::new(&hit_pos, &refr_dir), depth + 1, rng)
                         );
                 }
             },
             ReflType::SPEC => { // Ideal SPECULAR reflection
                 let dir = ray.direction - 2.0 * hit_normal.dot(ray.direction) * hit_normal;
-                return scene[id].emission + f * color(scene.clone(), &Ray::new(&hit_pos, &dir), depth + 1);
+                return scene[id].emission + f * color(scene.clone(), &Ray::new(&hit_pos, &dir), depth + 1, rng);
             }
         }
     }
@@ -297,23 +296,23 @@ fn main() {
 
     let scene = Arc::new([
         // Left
-        Sphere::new(1e5, Vec3(1e5 + 1.0, 40.8, 81.6), Vec3(0., 0., 0.), Vec3(0.75, 0.25, 0.25), ReflType::DIFF),
+        Sphere::new(1e5,   Vec3(1e5 + 1.0, 40.8, 81.6),    Vec3(0., 0., 0.),       Vec3(0.75, 0.25, 0.25),   ReflType::DIFF),
         // Right
-        Sphere::new(1e5, Vec3(-1e5 + 99.0, 40.8, 81.6), Vec3(0., 0., 0.), Vec3(0.25, 0.25, 0.75), ReflType::DIFF),
+        Sphere::new(1e5,   Vec3(-1e5 + 99.0, 40.8, 81.6),  Vec3(0., 0., 0.),       Vec3(0.25, 0.25, 0.75),   ReflType::DIFF),
         // Back
-        Sphere::new(1e5, Vec3(50.0, 40.8, 1e5), Vec3(0., 0., 0.), Vec3(0.75, 0.75, 0.75), ReflType::DIFF),
+        Sphere::new(1e5,   Vec3(50.0, 40.8, 1e5),          Vec3(0., 0., 0.),       Vec3(0.75, 0.75, 0.75),   ReflType::DIFF),
         // Front
-        Sphere::new(1e5, Vec3(50.0, 40.8, -1e5 + 170.0), Vec3(0., 0., 0.), Vec3(0., 0., 0.), ReflType::DIFF),
+        Sphere::new(1e5,   Vec3(50.0, 40.8, -1e5 + 170.0), Vec3(0., 0., 0.),       Vec3(0., 0., 0.),         ReflType::DIFF),
         // Bottom
-        Sphere::new(1e5, Vec3(50.0, 1e5, 81.6), Vec3(0., 0., 0.), Vec3(0.75, 0.75, 0.75), ReflType::DIFF),
+        Sphere::new(1e5,   Vec3(50.0, 1e5, 81.6),          Vec3(0., 0., 0.),       Vec3(0.75, 0.75, 0.75),   ReflType::DIFF),
         // Top
-        Sphere::new(1e5, Vec3(50.0, -1e5 + 81.6, 81.6), Vec3(0., 0., 0.), Vec3(0.75, 0.75, 0.75), ReflType::DIFF),
+        Sphere::new(1e5,   Vec3(50.0, -1e5 + 81.6, 81.6),  Vec3(0., 0., 0.),       Vec3(0.75, 0.75, 0.75),   ReflType::DIFF),
         // Metal ball
-        Sphere::new(16.5, Vec3(27.0, 16.5, 47.0), Vec3(0., 0., 0.), Vec3(1., 1., 1.) * 0.999, ReflType::SPEC),
+        Sphere::new(16.5,  Vec3(27.0, 16.5, 47.0),         Vec3(0., 0., 0.),       Vec3(1., 1., 1.) * 0.999, ReflType::SPEC),
         // Glass ball
-        Sphere::new(16.5, Vec3(73.0, 16.5, 78.0), Vec3(0., 0., 0.), Vec3(1., 1., 1.) * 0.999, ReflType::REFR),
+        Sphere::new(16.5,  Vec3(73.0, 16.5, 78.0),         Vec3(0., 0., 0.),       Vec3(1., 1., 1.) * 0.999, ReflType::REFR),
         // Light
-        Sphere::new(600.0, Vec3(50.0, 681.6 - 0.27, 81.6), Vec3(12.0, 12.0, 12.0), Vec3(0., 0., 0.), ReflType::DIFF),
+        Sphere::new(600.0, Vec3(50.0, 681.6 - 0.27, 81.6), Vec3(12.0, 12.0, 12.0), Vec3(0., 0., 0.),         ReflType::DIFF),
     ]);
 
     let width = 1024;
@@ -340,7 +339,7 @@ fn main() {
 
             let scene_ref = scene.clone();
             // 2x2 sub pixels(4x SSAA)
-            thread::spawn(move || {
+            thread::Builder::new().stack_size(100000 as usize * 0xff).spawn(move || {
                 let mut rng = rand::thread_rng();
                 let mut c = Vec3(0.0, 0.0, 0.0);
                 for sy in 0..2{
@@ -371,7 +370,7 @@ fn main() {
                             let dir = cx * (((sx as f64 + 0.5 + dx) / 2.0 + x as f64) / width as f64 - 0.5) +
                                     cy * (((sy as f64 + 0.5 + dy) / 2.0 + y as f64) / height as f64 - 0.5) + cam_look;
                             
-                            r = r + color(scene_ref.clone(), &Ray::new(&(cam_pos + dir * 140.0), &dir.normalize()), 0) * (1.0 / samps as f64);
+                            r = r + color(scene_ref.clone(), &Ray::new(&(cam_pos + dir * 140.0), &dir.normalize()), 0, &mut rng) * (1.0 / samps as f64);
                         }
                         c = c + 0.25 * Vec3(
                             clamp(r.0),
@@ -381,7 +380,7 @@ fn main() {
                     }
                 }
                 ttx.send((i, c)).unwrap();
-            });
+            }).unwrap();
 
         }
     }
