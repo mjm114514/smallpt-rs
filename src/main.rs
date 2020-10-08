@@ -7,20 +7,7 @@ use rand::Rng;
 use std::thread;
 use std::sync::{mpsc, Arc};
 use vec3::Vec3;
-
-struct Ray{
-    origin: Vec3,
-    direction: Vec3
-}
-
-impl Ray{
-    fn new(origin: &Vec3, direction: &Vec3) -> Self{
-        Ray{
-            origin: Vec3(origin.0, origin.1, origin.2),
-            direction: Vec3(direction.0, direction.1, direction.2)
-        }
-    }
-}
+use ray::Ray;
 
 enum ReflType {
     DIFF,

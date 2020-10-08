@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 rand="0.5.5"
 vec3 = {path = "vec3"}
+ray = {path = "ray"}
