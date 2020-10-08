@@ -1,90 +1,12 @@
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
-use std::ops::Add;
-use std::ops::Sub;
-use std::ops::Mul;
 use std::f64::INFINITY;
 use std::f64::consts::PI;
 use rand::Rng;
 use std::thread;
 use std::sync::{mpsc, Arc};
-
-#[derive(Copy, Clone)]
-struct Vec3(f64, f64, f64);
-
-impl Vec3{
-    fn dot(&self, other: Vec3) -> f64{
-        self.0 * other.0 + self.1 * other.1 + self.2 * other.2
-    }
-    fn length(&self) -> f64{
-        (self.0 * self.0 + self.1 * self.1 + self.2 * self.2).sqrt()
-    }
-    fn cross(&self, other: Vec3) -> Vec3{
-        Vec3(
-            self.1 * other.2 - self.2 * other.1,
-            self.2 * other.0 - self.0 * other.2,
-            self.0 * other.1 - self.1 * other.0
-        )
-    }
-    fn normalize(mut self) -> Vec3{
-        let len = self.length();
-        self.0 /= len;
-        self.1 /= len;
-        self.2 /= len;
-        self
-    }
-}
-impl Add<Vec3> for Vec3{
-    type Output = Vec3;
-    fn add(self, other: Vec3) -> Vec3{
-        Vec3(
-            self.0 + other.0,
-            self.1 + other.1,
-            self.2 + other.2
-        )
-    }
-}
-impl Sub<Vec3> for Vec3{
-    type Output = Vec3;
-    fn sub(self, other: Vec3) -> Vec3{
-        Vec3(
-            self.0 - other.0,
-            self.1 - other.1,
-            self.2 - other.2
-        )
-    }
-}
-impl Mul<f64> for Vec3{
-    type Output = Vec3;
-    fn mul(self, k: f64) -> Vec3{
-        Vec3(
-            self.0 * k,
-            self.1 * k,
-            self.2 * k
-        )
-    }
-}
-impl Mul<Vec3> for f64{
-    type Output = Vec3;
-    fn mul(self, other: Vec3) -> Vec3{
-        Vec3(
-            self * other.0,
-            self * other.1,
-            self * other.2
-        )
-    }
-}
-impl Mul<Vec3> for Vec3{
-    type Output = Vec3;
-    fn mul(self, other: Vec3) -> Vec3{
-        Vec3(
-            self.0 * other.0,
-            self.1 * other.1,
-            self.2 * other.2
-        )
-    }
-}
+use vec3::Vec3;
 
 struct Ray{
     origin: Vec3,
@@ -228,7 +150,6 @@ fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32, rng: &mut rand::ThreadRng)
                 let cos2t = 1.0 - nnt * nnt * (1.0 - ddotn * ddotn);
                 if cos2t < 0.0{
                     // Total Internal reflection
-                    println!("total reflection depth {}", depth);
                     return scene[id].emission + f * color(scene.clone(), &refl_ray, depth + 1, rng);
                 }
                 let refr_dir: Vec3;

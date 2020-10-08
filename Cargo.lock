@@ -56,11 +56,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c33a3c44ca05fa6f1807d8e6743f3824e8509beca625669633be0acbdf509dc"
 
 [[package]]
-name = "rust-pt"
+name = "smallpt-rs"
 version = "0.1.0"
 dependencies = [
  "rand",
+ "vec3",
 ]
+
+[[package]]
+name = "vec3"
+version = "0.1.0"
 
 [[package]]
 name = "winapi"

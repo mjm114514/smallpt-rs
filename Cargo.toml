@@ -1,5 +1,5 @@
 [package]
-name = "rust-pt"
+name = "smallpt-rs"
 version = "0.1.0"
 authors = ["Jiaming Mao <jiamingm@intel.com>"]
 edition = "2018"
@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 rand="0.5.5"
+vec3 = {path = "vec3"}
