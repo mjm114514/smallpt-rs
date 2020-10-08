@@ -8,54 +8,7 @@ use std::thread;
 use std::sync::{mpsc, Arc};
 use vec3::Vec3;
 use ray::Ray;
-
-enum ReflType {
-    DIFF,
-    SPEC,
-    REFR
-}
-
-struct Sphere{
-    radiance: f64,
-    position: Vec3,
-    emission: Vec3,
-    color: Vec3,
-    refl_t: ReflType
-}
-
-impl Sphere{
-    fn new(radiance: f64, position: Vec3, emission: Vec3, color: Vec3, refl_t: ReflType) -> Self{
-        Sphere{
-            radiance: radiance,
-            position: position,
-            emission: emission,
-            color: color,
-            refl_t: refl_t
-        }
-    }
-    fn intersect(&self, ray: &Ray) -> Option<f64>{
-        let op = self.position - ray.origin;
-        let mut t: f64;
-        let b = op.dot(ray.direction);
-        let mut delta = b * b - op.dot(op) + self.radiance * self.radiance;
-
-        if delta < 0.0{
-            return None;
-        }
-        delta = delta.sqrt();
-        t = b - delta;
-        if t > 1e-4{
-            return Some(t);
-        }
-        else{
-            t = b + delta;
-            if t > 1e-4{
-                return Some(t);
-            }
-        }
-        None
-    }
-}
+use sphere::{Sphere, ReflType};
 
 fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) -> Vec3{
     let mut t = INFINITY;

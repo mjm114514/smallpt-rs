@@ -68,6 +68,15 @@ version = "0.1.0"
 dependencies = [
  "rand",
  "ray",
+ "sphere",
+ "vec3",
+]
+
+[[package]]
+name = "sphere"
+version = "0.1.0"
+dependencies = [
+ "ray",
  "vec3",
 ]
 
