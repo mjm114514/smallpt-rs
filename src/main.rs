@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::env;
 use std::io::prelude::*;
 use std::path::Path;
 use std::f64::INFINITY;
@@ -155,6 +156,17 @@ fn to_int(x: f64) -> i32{
 
 fn main() {
 
+    let args: Vec<String> = env::args().collect();
+
+    let mut samps = 2;
+
+    if args.len() > 1{
+        match args[1].to_string().parse::<i32>(){
+            Ok(num) => samps = num / 4,
+            Err(_) => {}
+        }
+    }
+
     let scene = Arc::new([
         // Left
         Sphere::new(1e5,   Vec3(1e5 + 1.0, 40.8, 81.6),    Vec3(0., 0., 0.),       Vec3(0.75, 0.25, 0.25),   ReflType::DIFF),
@@ -178,7 +190,6 @@ fn main() {
 
     let width = 1024;
     let height = 768;
-    let samps = 2;
 
     let cam_pos = Vec3(50.0, 52.0, 295.6);
     let cam_look = Vec3(0.0, -0.042612, -1.0).normalize();
@@ -194,7 +205,6 @@ fn main() {
 
     for y in 0..height{
         // Loop over rows
-        print!("\rRendering ({} spp) {:.2}%", samps * 4, 100.0 * y as f64 / (height as f64 - 1.0));
         for x in 0..width{
             // loop over cols
             let i = (height - y - 1) * width + x;
@@ -248,8 +258,9 @@ fn main() {
         }
     }
 
-    for _i in 0..width * height{
+    for i in 0..width * height{
         let (pos, value) = rx.recv().unwrap();
+        print!("\rRendering ({} spp) {:.2}%", samps * 4, 100.0 * i as f64 / ((height * width) as f64 - 1.0));
         c[pos] = value;
     }
 
