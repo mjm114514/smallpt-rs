@@ -258,8 +258,6 @@ fn main() {
         });
     }
 
-    drop(pool);
-
     for _i in 0..width * height{
         let (pos, val) = r.recv().unwrap();
         c[pos] = val;
