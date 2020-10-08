@@ -11,7 +11,7 @@ use ray::Ray;
 use sphere::{Sphere, ReflType};
 use threadpool::ThreadPool;
 
-fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) -> Vec3{
+fn radiance(scene: &[Sphere], ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) -> Vec3{
     let mut t = INFINITY;
     let mut id: Option<usize> = None;
     for i in (0..scene.len()).rev(){
@@ -26,7 +26,7 @@ fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32, rng: &mut rand::ThreadRng)
     if let Some(id) = id{
         let mut f = scene[id].color;
 
-        if depth > 5{
+        if depth > 4{
             let rand: f64 = rng.gen();
             let mut p = f.0;
             if f.1 > p{
@@ -72,7 +72,7 @@ fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32, rng: &mut rand::ThreadRng)
 
                 let dir = (r1.cos() * r2s * u + r1.sin() * r2s * v + (1.0 - rand2).sqrt() * w).normalize();
 
-                return scene[id].emission + f * color(scene.clone(), &Ray::new(&hit_pos, &dir), depth + 1, rng);
+                return scene[id].emission + f * radiance(scene, &Ray::new(&hit_pos, &dir), depth + 1, rng);
             },
             ReflType::REFR => {
                 let refl_dir = ray.direction - 2.0 * hit_normal.dot(ray.direction) * hit_normal;
@@ -91,7 +91,7 @@ fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32, rng: &mut rand::ThreadRng)
                 let cos2t = 1.0 - nnt * nnt * (1.0 - ddotn * ddotn);
                 if cos2t < 0.0{
                     // Total Internal reflection
-                    return scene[id].emission + f * color(scene.clone(), &refl_ray, depth + 1, rng);
+                    return scene[id].emission + f * radiance(scene, &refl_ray, depth + 1, rng);
                 }
                 let refr_dir: Vec3;
                 let a = nt - nc;
@@ -116,24 +116,24 @@ fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32, rng: &mut rand::ThreadRng)
                 let r: f64 = rng.gen();
 
 
-                if depth > 2{
+                if depth > 1{
                     if r < p{
-                        return scene[id].emission + rp * f * color(scene.clone(), &refl_ray, depth + 1, rng);
+                        return scene[id].emission + rp * f * radiance(scene, &refl_ray, depth + 1, rng);
                     }
                     else{
-                        return scene[id].emission + tp * f * color(scene.clone(), &Ray::new(&hit_pos, &refr_dir), depth + 1, rng);
+                        return scene[id].emission + tp * f * radiance(scene, &Ray::new(&hit_pos, &refr_dir), depth + 1, rng);
                     }
                 }
                 else{
                     return scene[id].emission + f * (
-                            re * color(scene.clone(), &refl_ray, depth + 1, rng) +
-                            tr * color(scene.clone(), &Ray::new(&hit_pos, &refr_dir), depth + 1, rng)
+                            re * radiance(scene, &refl_ray, depth + 1, rng) +
+                            tr * radiance(scene, &Ray::new(&hit_pos, &refr_dir), depth + 1, rng)
                         );
                 }
             },
             ReflType::SPEC => { // Ideal SPECULAR reflection
                 let dir = ray.direction - 2.0 * hit_normal.dot(ray.direction) * hit_normal;
-                return scene[id].emission + f * color(scene.clone(), &Ray::new(&hit_pos, &dir), depth + 1, rng);
+                return scene[id].emission + f * radiance(scene, &Ray::new(&hit_pos, &dir), depth + 1, rng);
             }
         }
     }
@@ -198,23 +198,22 @@ fn main() {
     let cy = cx.cross(cam_look).normalize() * 0.5135;
 
     let mut c = vec![Vec3(0.0, 0.0, 0.0); width * height];
-
-    let (tx, rx) = mpsc::channel();
-
     let pool = ThreadPool::new(16);
+
+    let (s, r) = mpsc::channel();
 
     for y in 0..height{
         // Loop over rows
-        for x in 0..width{
-            // loop over cols
-            let i = (height - y - 1) * width + x;
-            let ttx = tx.clone();
-
-            let scene_ref = scene.clone();
-            // 2x2 sub pixels(4x SSAA)
-            pool.execute(move || {
+        let scene_ref = scene.clone();
+        let ss = s.clone();
+        pool.execute(move ||{
+            for x in 0..width{
+                // loop over cols
+                // 2x2 sub pixels(4x SSAA)
                 let mut rng = rand::thread_rng();
                 let mut c = Vec3(0.0, 0.0, 0.0);
+                let i = (height - y - 1) * width + x;
+                let scene = scene_ref.as_ref();
                 for sy in 0..2{
                     for sx in 0..2{
                         let mut r = Vec3(0.0, 0.0, 0.0);
@@ -243,7 +242,7 @@ fn main() {
                             let dir = cx * (((sx as f64 + 0.5 + dx) / 2.0 + x as f64) / width as f64 - 0.5) +
                                     cy * (((sy as f64 + 0.5 + dy) / 2.0 + y as f64) / height as f64 - 0.5) + cam_look;
                             
-                            r = r + color(scene_ref.clone(), &Ray::new(&(cam_pos + dir * 140.0), &dir.normalize()), 0, &mut rng) * (1.0 / samps as f64);
+                            r = r + radiance(scene, &Ray::new(&(cam_pos + dir * 140.0), &dir.normalize()), 0, &mut rng) * (1.0 / samps as f64);
                         }
                         c = c + 0.25 * Vec3(
                             clamp(r.0),
@@ -252,16 +251,18 @@ fn main() {
                         );
                     }
                 }
-                ttx.send((i, c)).unwrap();
-            });
 
-        }
+                ss.send((i, c)).unwrap();
+            };
+            print!("\rRendering ({} spp) {:.2}%", samps * 4, 100.0 * y as f64 / (height as f64 - 1.0));
+        });
     }
 
-    for i in 0..width * height{
-        let (pos, value) = rx.recv().unwrap();
-        print!("\rRendering ({} spp) {:.2}%", samps * 4, 100.0 * i as f64 / ((height * width) as f64 - 1.0));
-        c[pos] = value;
+    drop(pool);
+
+    for _i in 0..width * height{
+        let (pos, val) = r.recv().unwrap();
+        c[pos] = val;
     }
 
     let mut f = match File::create(&Path::new("image.ppm")){
