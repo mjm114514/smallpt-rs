@@ -207,10 +207,10 @@ fn main() {
         let scene_ref = scene.clone();
         let ss = s.clone();
         pool.execute(move ||{
+            let mut rng = rand::thread_rng();
             for x in 0..width{
                 // loop over cols
                 // 2x2 sub pixels(4x SSAA)
-                let mut rng = rand::thread_rng();
                 let mut c = Vec3(0.0, 0.0, 0.0);
                 let i = (height - y - 1) * width + x;
                 let scene = scene_ref.as_ref();
