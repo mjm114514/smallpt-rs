@@ -4,11 +4,11 @@ use std::path::Path;
 use std::f64::INFINITY;
 use std::f64::consts::PI;
 use rand::Rng;
-use std::thread;
 use std::sync::{mpsc, Arc};
 use vec3::Vec3;
 use ray::Ray;
 use sphere::{Sphere, ReflType};
+use threadpool::ThreadPool;
 
 fn color(scene: Arc<[Sphere]>, ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) -> Vec3{
     let mut t = INFINITY;
@@ -190,6 +190,8 @@ fn main() {
 
     let (tx, rx) = mpsc::channel();
 
+    let pool = ThreadPool::new(16);
+
     for y in 0..height{
         // Loop over rows
         print!("\rRendering ({} spp) {:.2}%", samps * 4, 100.0 * y as f64 / (height as f64 - 1.0));
@@ -200,7 +202,7 @@ fn main() {
 
             let scene_ref = scene.clone();
             // 2x2 sub pixels(4x SSAA)
-            thread::Builder::new().stack_size(100000 as usize * 0xff).spawn(move || {
+            pool.execute(move || {
                 let mut rng = rand::thread_rng();
                 let mut c = Vec3(0.0, 0.0, 0.0);
                 for sy in 0..2{
@@ -241,7 +243,7 @@ fn main() {
                     }
                 }
                 ttx.send((i, c)).unwrap();
-            }).unwrap();
+            });
 
         }
     }

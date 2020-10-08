@@ -69,6 +69,7 @@ dependencies = [
  "rand",
  "ray",
  "sphere",
+ "threadpool",
  "vec3",
 ]
 
@@ -79,6 +80,10 @@ dependencies = [
  "ray",
  "vec3",
 ]
+
+[[package]]
+name = "threadpool"
+version = "0.1.0"
 
 [[package]]
 name = "vec3"
