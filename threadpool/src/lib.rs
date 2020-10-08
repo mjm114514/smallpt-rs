@@ -25,7 +25,7 @@ enum Message{
 
 impl Worker{
     fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Self{
-        let thread = thread::Builder::new().stack_size(10 * 1024 * 1024).spawn(move || {
+        let thread = thread::Builder::new().stack_size(20 * 1024 * 1024).spawn(move || {
             loop{
                 let message = receiver.lock().unwrap().recv().unwrap();
                 match message{
