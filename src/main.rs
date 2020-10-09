@@ -5,12 +5,11 @@ use std::path::Path;
 use std::f64::INFINITY;
 use std::f64::consts::PI;
 use rand::Rng;
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 use vec3::Vec3;
 use ray::Ray;
 use sphere::{Sphere, ReflType};
 use threadpool::ThreadPool;
-use scoped_threadpool::Pool;
 
 fn radiance(scene: &[Sphere], ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) -> Vec3{
     let mut t = INFINITY;
