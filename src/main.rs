@@ -213,7 +213,6 @@ fn main() {
                 // loop over cols
                 // 2x2 sub pixels(4x SSAA)
                 let mut c = Vec3(0.0, 0.0, 0.0);
-                let i = (height - y - 1) * width + x;
                 let scene = scene_ref.as_ref();
                 for sy in 0..2{
                     for sx in 0..2{
@@ -240,8 +239,10 @@ fn main() {
                                 dy = 1.0 - (2.0 - r2).sqrt();
                             }
 
+
                             let dir = cx * (((sx as f64 + 0.5 + dx) / 2.0 + x as f64) / width as f64 - 0.5) +
-                                    cy * (((sy as f64 + 0.5 + dy) / 2.0 + y as f64) / height as f64 - 0.5) + cam_look;
+                                    cy * (((sy as f64 + 0.5 + dy) / 2.0 + y as f64) / height as f64 - 0.51) + cam_look;
+
                             
                             r = r + radiance(scene, &Ray::new(&(cam_pos + dir * 140.0), &dir.normalize()), 0, &mut rng) * (1.0 / samps as f64);
                         }
