@@ -2,6 +2,7 @@ use std::thread;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::mem;
 
 #[cfg(test)]
 mod tests {
@@ -11,7 +12,8 @@ mod tests {
     }
 }
 
-type Job = Box<dyn FnOnce() + Send + 'static>;
+type ScopedJob<'a> = Box<dyn FnOnce() + Send + 'a>;
+type Job = ScopedJob<'static>;
 
 struct Worker{
     id: usize,

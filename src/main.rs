@@ -10,6 +10,7 @@ use vec3::Vec3;
 use ray::Ray;
 use sphere::{Sphere, ReflType};
 use threadpool::ThreadPool;
+use scoped_threadpool::Pool;
 
 fn radiance(scene: &[Sphere], ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) -> Vec3{
     let mut t = INFINITY;
@@ -198,14 +199,15 @@ fn main() {
     let cy = cx.cross(cam_look).normalize() * 0.5135;
 
     let mut c = vec![Vec3(0.0, 0.0, 0.0); width * height];
-    let pool = ThreadPool::new(16);
+    let pool = ThreadPool::new(8);
 
-    let (s, r) = mpsc::channel();
-
-    for y in 0..height{
+    let mut y = 0;
+    for ci in c.rchunks_mut(width){
         // Loop over rows
         let scene_ref = scene.clone();
-        let ss = s.clone();
+        let slot = unsafe{
+            std::mem::transmute::<&mut [Vec3], &'static mut [Vec3]>(ci)
+        };
         pool.execute(move ||{
             let mut rng = rand::thread_rng();
             for x in 0..width{
@@ -251,17 +253,13 @@ fn main() {
                         );
                     }
                 }
-
-                ss.send((i, c)).unwrap();
+                slot[x] = c;
             };
             print!("\rRendering ({} spp) {:.2}%", samps * 4, 100.0 * y as f64 / (height as f64 - 1.0));
         });
+        y += 1;
     }
-
-    for _i in 0..width * height{
-        let (pos, val) = r.recv().unwrap();
-        c[pos] = val;
-    }
+    drop(pool);
 
     let mut f = match File::create(&Path::new("image.ppm")){
         Err(why) => panic!("Couldn't open {}: {}", "image.ppm", why),

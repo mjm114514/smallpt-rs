@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 rand="0.5.5"
+scoped_threadpool="0.1.6"
 vec3 = {path = "vec3"}
 ray = {path = "ray"}
 sphere = {path = "sphere"}
