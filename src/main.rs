@@ -198,7 +198,7 @@ fn main() {
     let cy = cx.cross(cam_look).normalize() * 0.5135;
 
     let mut c = vec![Vec3(0.0, 0.0, 0.0); width * height];
-    let pool = ThreadPool::new(8);
+    let pool = ThreadPool::new(16);
 
     let mut y = 0;
     for ci in c.rchunks_mut(width){

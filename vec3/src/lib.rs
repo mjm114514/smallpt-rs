@@ -34,6 +34,27 @@ impl Vec3{
         self.2 /= len;
         self
     }
+    pub fn add(&self, other: &Self) -> Self{
+        Vec3(
+            self.0 + other.0,
+            self.1 + other.1,
+            self.2 + other.2
+        )
+    }
+    pub fn sub(&self, other: &Self) -> Self{
+        Vec3(
+            self.0 - other.0,
+            self.1 - other.1,
+            self.2 - other.2
+        )
+    }
+    pub fn mul(&self, k: f64) -> Self{
+        Vec3(
+            self.0 * k,
+            self.1 * k,
+            self.2 * k
+        )
+    }
 }
 impl Add<Vec3> for Vec3{
     type Output = Vec3;
