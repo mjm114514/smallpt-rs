@@ -1,15 +1,12 @@
-use std::fs::File;
-use std::env;
-use std::io::prelude::*;
-use std::path::Path;
-use std::f64::INFINITY;
-use std::f64::consts::PI;
+use std::{ env, sync::Arc };
+use std::f64::{ INFINITY, consts::PI };
 use rand::Rng;
-use std::sync::Arc;
 use vec3::Vec3;
 use ray::Ray;
 use sphere::{Sphere, ReflType};
 use threadpool::ThreadPool;
+use image::ImageBuffer;
+
 
 fn radiance(scene: &[Sphere], ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) -> Vec3{
     let mut t = INFINITY;
@@ -25,7 +22,6 @@ fn radiance(scene: &[Sphere], ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) 
     }
     if let Some(id) = id{
         let mut f = scene[id].color;
-
         if depth > 4{
             let rand: f64 = rng.gen();
             let mut p = f.0;
@@ -42,7 +38,6 @@ fn radiance(scene: &[Sphere], ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) 
                 return scene[id].emission;
             }
         }
-
         let hit_pos = ray.origin + (ray.direction * t);
         let hit_normal = (hit_pos - scene[id].position).normalize();
         let nl: Vec3;
@@ -52,7 +47,6 @@ fn radiance(scene: &[Sphere], ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) 
         else{
             nl = -1.0 * hit_normal;
         }
-
         match scene[id].refl_t{
             ReflType::DIFF => {  // Ideal DIFFUSE reflection
                 let rand1: f64 = rng.gen();
@@ -73,7 +67,7 @@ fn radiance(scene: &[Sphere], ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) 
                 let dir = (r1.cos() * r2s * u + r1.sin() * r2s * v + (1.0 - rand2).sqrt() * w).normalize();
 
                 return scene[id].emission + f * radiance(scene, &Ray::new(&hit_pos, &dir), depth + 1, rng);
-            },
+            }
             ReflType::REFR => {
                 let refl_dir = ray.direction - 2.0 * hit_normal.dot(ray.direction) * hit_normal;
                 let refl_ray = Ray::new(&hit_pos, &refl_dir);
@@ -106,16 +100,12 @@ fn radiance(scene: &[Sphere], ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) 
                     refr_dir = (ray.direction * nnt - hit_normal * -1.0 * (ddotn * nnt + cos2t.sqrt())).normalize();
                     c = 1.0 - (refr_dir.dot(hit_normal));
                 }
-
                 let re = r0 + (1.0 - r0) * c * c * c * c * c;
                 let tr = 1.0 - re;
                 let p = 0.25 + 0.5 * re;
                 let rp = re / p;
                 let tp = tr / (1.0 - p);
-
                 let r: f64 = rng.gen();
-
-
                 if depth > 1{
                     if r < p{
                         return scene[id].emission + rp * f * radiance(scene, &refl_ray, depth + 1, rng);
@@ -130,7 +120,7 @@ fn radiance(scene: &[Sphere], ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) 
                             tr * radiance(scene, &Ray::new(&hit_pos, &refr_dir), depth + 1, rng)
                         );
                 }
-            },
+            }
             ReflType::SPEC => { // Ideal SPECULAR reflection
                 let dir = ray.direction - 2.0 * hit_normal.dot(ray.direction) * hit_normal;
                 return scene[id].emission + f * radiance(scene, &Ray::new(&hit_pos, &dir), depth + 1, rng);
@@ -139,6 +129,7 @@ fn radiance(scene: &[Sphere], ray: &Ray, depth: i32, rng: &mut rand::ThreadRng) 
     }
     Vec3(0., 0., 0.) // if miss return black color
 }
+
 
 fn clamp(s: f64) -> f64{
     if s < 0.0{
@@ -150,23 +141,21 @@ fn clamp(s: f64) -> f64{
     s
 }
 
-fn to_int(x: f64) -> i32{
-    (clamp(x).powf(1.0 / 2.2) * 255.0 + 0.5) as i32
+
+fn to_int(x: f64) -> u8{
+    (clamp(x).powf(1.0 / 2.2) * 255.0 + 0.5) as u8
 }
 
+
 fn main() {
-
     let args: Vec<String> = env::args().collect();
-
     let mut samps = 2;
-
     if args.len() > 1{
         match args[1].to_string().parse::<i32>(){
             Ok(num) => samps = num / 4,
             Err(_) => {}
         }
     }
-
     let scene = Arc::new([
         // Left
         Sphere::new(1e5,   Vec3(1e5 + 1.0, 40.8, 81.6),    Vec3(0., 0., 0.),       Vec3(0.75, 0.25, 0.25),   ReflType::DIFF),
@@ -187,7 +176,6 @@ fn main() {
         // Light
         Sphere::new(600.0, Vec3(50.0, 681.6 - 0.27, 81.6), Vec3(12.0, 12.0, 12.0), Vec3(0., 0., 0.),         ReflType::DIFF),
     ]);
-
     let width = 1024;
     let height = 768;
 
@@ -199,8 +187,8 @@ fn main() {
 
     let mut c = vec![Vec3(0.0, 0.0, 0.0); width * height];
     let pool = ThreadPool::new(16);
-
     let mut y = 0;
+
     for ci in c.rchunks_mut(width){
         // Loop over rows
         let scene_ref = scene.clone();
@@ -238,12 +226,8 @@ fn main() {
                             else{
                                 dy = 1.0 - (2.0 - r2).sqrt();
                             }
-
-
                             let dir = cx * (((sx as f64 + 0.5 + dx) / 2.0 + x as f64) / width as f64 - 0.5) +
                                     cy * (((sy as f64 + 0.5 + dy) / 2.0 + y as f64) / height as f64 - 0.51) + cam_look;
-
-                            
                             r = r + radiance(scene, &Ray::new(&(cam_pos + dir * 140.0), &dir.normalize()), 0, &mut rng) * (1.0 / samps as f64);
                         }
                         c = c + 0.25 * Vec3(
@@ -261,16 +245,16 @@ fn main() {
     }
     drop(pool);
 
-    let mut f = match File::create(&Path::new("image.ppm")){
-        Err(why) => panic!("Couldn't open {}: {}", "image.ppm", why),
-        Ok(file) => file
-    };
+    let mut img_buf = ImageBuffer::new(width as u32, height as u32);
 
-    f.write("P3\n".as_bytes()).expect("Failed to write");
-    write!(f, "{}\n{}\n{}\n", width, height, 255).expect("Failed to write");
-
-    for i in 0..width * height{
-        write!(f, "{} {} {} ", to_int(c[i].0), to_int(c[i].1), to_int(c[i].2))
-            .expect("Failed to write");
+    for (x, y, pixel) in img_buf.enumerate_pixels_mut(){
+        let x = x as usize;
+        let y = y as usize;
+        let r = to_int(c[y * width + x].0);
+        let g = to_int(c[y * width + x].1);
+        let b = to_int(c[y * width + x].2);
+        *pixel = image::Rgb([r, g, b]);
     }
+
+    img_buf.save("res.png").unwrap();
 }
